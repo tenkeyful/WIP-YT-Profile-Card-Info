@@ -1,16 +1,6 @@
-## NOTE
-> [!IMPORTANT]
-> **Update Sep 1st, 2025:** I've been made aware of YouTube's internal API, Innertube, that can reliably fetch Profile Card data and has no quota! The problem is that it's undocumented (internal API duh) so I have no idea how to use it. If anyone can reverse engineer this API, please make an issue!
-> 
-> **Update Feb 23rd, 2026:** Apparently, YouTube Data API doesn't have a Profile Card endpoint... What a bummer. I've been struggling with Innertube 🫩.
->
-> **Update Oct 14th, 2026:** TYSM CLAUDE I FINALLY GOT RID OF CLICKING UPDATE ASAP
-
 > `POST: https://www.youtube.com/youtubei/v1/account/get_profile_card`
 >
 > Open a YouTube video, scroll down to the comment section, open DevTools, open the Network tab, click on a profile picture of any commenter, right click on the `get_profile_card` request, Copy Value, Copy Response.
->
-> **Use GitHub's table of content button in the header to navigate in this README.md.**
 
 [Example of Response](https://www.youtube.com/watch?v=vBhaFvwvRac&lc=UgzFjS3TkLJ3QZ51Vup4AaABAg):
 ```
@@ -91,24 +81,6 @@ What blocks external access:
 - The protobuf body contains session-specific tokens generated internally by YouTube's JS that can't be intercepted before they're set
 ```
 
-Prompt:
-```
-YouTube InnerTube get_profile_card
-
-I'm trying to call YouTube's internal InnerTube API endpoint POST https://www.youtube.com/youtubei/v1/account/get_profile_card from Node.js.
-
-What we know:
-- Body is gzip-compressed protobuf (despite Content-Type: application/json header)
-- Required headers: X-Origin: https://www.youtube.com, Authorization: SAPISIDHASH, X-Goog-Visitor-Id, X-Youtube-Bootstrap-Logged-In: true, Content-Encoding: gzip
-- SAPISIDHASH formula: SHA1(timestamp + " " + SAPISID_cookie + " " + "https://www.youtube.com") — must be freshly generated each run
-- The protobuf body schema is unknown — we never successfully decoded it
-- YouTube returns 400 "invalid argument" for any body we construct, and 400 "unsafe for trusted domain" when SAPISIDHASH is stale
-
-Known response structure: data.profileCard.profileCardViewModel.profileIdentityInfo.profileIdentityInfoViewModel → channelDisplayName, channelHandle, leftOfBulletInfo, rightOfBulletInfo, avatar.avatarViewModel.image.sources[]
-
-The core unsolved problem: The exact protobuf field layout of the request body. We need to either decode a real raw request binary, or use Puppeteer/Playwright to let YouTube's own JS build the request and intercept the response.
-```
-
 ---
 
 ## What is this [add-on](https://addons.mozilla.org/firefox/addon/wip-yt-profile-card-info)?
@@ -138,8 +110,5 @@ It faces several inherent constraints due to its operational approach:
 - Its operations could interfere with user's interaction, such as while searching in the search box. If user clicks while Profile Card is visible, information might not properly be extracted.
 - [Bring back YouTube Comment Usernames](https://addons.mozilla.org/firefox/addon/youtube-找回留言區用戶名稱) will render this add-on useless because of the handle verification step.
 
-## Why can't you do away with programmatically clicking to extract information?
-Check [here](##NOTE).
-
 ## What is this add-on's purpose?
-A **proof of concept** to demonstrate that helpful information can easily be made accessible at the user's **fingertips**. I've always find Profile Card to be practically useless since user must manually **click** the commenter's profile picture to access it, and barely anyone does that. Hopefully, someone from YouTube sees this and implements Profile Card specific endpoints in YouTube Data API or just make Profile Cards more useful. **Until that day comes, this add-on will remain in development.**
+If you think about it, on most social media platforms, you click on other people's profile pictures. Duh! It's literally the "social" in "social media". Even though YouTube is technically one, it's primarily a video-sharing platform. Since when's the last time you click on a commenter's profile picture? That's why I created this add-on.
