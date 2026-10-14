@@ -1,3 +1,4 @@
+## Technical details
 > `POST: https://www.youtube.com/youtubei/v1/account/get_profile_card`
 >
 > Open a YouTube video, scroll down to the comment section, open DevTools, open the Network tab, click on a profile picture of any commenter, right click on the `get_profile_card` request, Copy Value, Copy Response.
