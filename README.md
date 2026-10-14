@@ -60,27 +60,83 @@ commentInteractionViewModel": {
                                                                 }
                                                             }
 ```
-## Claude
-Analysis:
-```
-Request:
-- Body is gzip-compressed protobuf (not JSON, despite Content-Type: application/json in headers)
-- Required headers include X-Origin: https://www.youtube.com, Authorization: SAPISIDHASH ..., X-Goog-Visitor-Id, X-Youtube-Bootstrap-Logged-In: true
-- SAPISIDHASH is time-based: SHA1(timestamp + " " + SAPISID + " " + https://www.youtube.com) and expires quickly
-- The request must originate from a genuine browser session — YouTube detects and rejects external replication
+## How `get_profile_card` works
 
-data.profileCard.profileCardViewModel.profileIdentityInfo.profileIdentityInfoViewModel contains:
-- channelDisplayName — channel name
-- channelHandle — e.g. @codeninja-d3w
-- leftOfBulletInfo — join date
-- rightOfBulletInfo — subscriber count
-- avatar.avatarViewModel.image.sources[] — avatar URLs at 48px, 88px, 176px
-- profileInfoSection contains recent comments and badges (e.g. "Top commenter")
+`POST https://www.youtube.com/youtubei/v1/account/get_profile_card?prettyPrint=false`
 
-What blocks external access:
-- YouTube's CSRF protection rejects requests where it can't verify browser origin
-- The protobuf body contains session-specific tokens generated internally by YouTube's JS that can't be intercepted before they're set
+Everything below was found by capturing the request YouTube's own page sends (Playwright `postDataBuffer()`, attached to a normal Chrome started with `--remote-debugging-port`), then replaying it.
+
+### Request body is JSON
+
+```json
+{
+    "context": {
+        "client": {
+            "hl": "en",
+            "clientName": "WEB",
+            "clientVersion": "...",
+            "visitorData": "..."
+        }
+    },
+    "profileOwnerExternalChannelId": "UC...",
+    "profileCardContext": "<opaque string>"
+}
 ```
+
+- `context` is the usual Innertube client context. In the page it is available as `ytcfg.get("INNERTUBE_CONTEXT")`.
+- `profileOwnerExternalChannelId` is the commenter's channel ID.
+- `profileCardContext` is an opaque token that YouTube generates **server-side** and sends along with the comment. It is not built by YouTube's JS.
+
+> [!NOTE]
+> A real captured request has exactly these three top-level keys. The add-on builds `context` from `ytcfg.get("INNERTUBE_CONTEXT")`, which should match what YouTube's page sends, but I have not compared the two key by key. If requests fail with `400`, compare `context` against a capture of your own.
+
+### Headers
+
+Sent from inside the page (same origin), so cookies and `Origin` are the real ones:
+
+| Header                                               | Value                                                                                                                                                                                |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Authorization`                                      | `SAPISIDHASH <ts>_<sha1>` where `sha1 = SHA1(ts + " " + SAPISID + " " + "https://www.youtube.com")`. Generate it **per request**; a stale one gives `400 unsafe for trusted domain`. |
+| `X-Origin`                                           | `https://www.youtube.com`                                                                                                                                                            |
+| `X-Goog-AuthUser`                                    | `0` (account index)                                                                                                                                                                  |
+| `X-Goog-Visitor-Id`                                  | `ytcfg.get("VISITOR_DATA")`                                                                                                                                                          |
+| `X-Youtube-Bootstrap-Logged-In`                      | `true`                                                                                                                                                                               |
+| `X-Youtube-Client-Name` / `X-Youtube-Client-Version` | `1` / `ytcfg.get("INNERTUBE_CLIENT_VERSION")`                                                                                                                                        |
+
+The earlier `400 invalid argument` errors came from guessing a protobuf body that does not exist.
+
+### Where the two per-commenter values come from
+
+You do not need to click anything to get `profileCardContext`. YouTube already sends it with every comment. In the `/youtubei/v1/next` responses that load the comments, every commenter has an object like this (it appears at a few places per comment: the author's channel command, the author's profile endpoint, and the avatar):
+
+```
+frameworkUpdates.entityBatchUpdate.mutations[].payload.commentEntityPayload.author
+    .channelCommand.innertubeCommand.profileCardCommand = {
+        profileOwnerExternalChannelId, profileCardContext, shouldUseProfileBottomSheet
+    }
+```
+
+De-duplicate by channel ID. Treat each token as belonging to the comment/video it came with; profile card statistics are for the video's channel ("On this channel").
+
+### Response
+
+Checked against real responses from two different videos (paths relative to `profileCard.profileCardViewModel`):
+
+| Data            | Path                                                                                                                           | Notes                                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| Display name    | `profileIdentityInfo.profileIdentityInfoViewModel.channelDisplayName`                                                          |                                                                                                                     |
+| Handle          | `...profileIdentityInfoViewModel.channelHandle`                                                                                | e.g. `@name`                                                                                                        |
+| Join date       | `...profileIdentityInfoViewModel.leftOfBulletInfo`                                                                             | `Joined 9 years ago`                                                                                                |
+| Subscribers     | `...profileIdentityInfoViewModel.rightOfBulletInfo`                                                                            | `28 subscribers`, `No subscribers`                                                                                  |
+| Avatar          | `...profileIdentityInfoViewModel.avatar.avatarViewModel.image.sources[]`                                                       | 48/88/176 px                                                                                                        |
+| Comment count   | `profileInfo.profileInfoViewModel.profileBadgeInfoChannelWide.commentBadge.commentDesc`                                        | always present                                                                                                      |
+| Hearts received | `...commentBadge.blackHeartDesc`                                                                                               | e.g. `16 received`. Only present for commenters who have hearts; it was absent in the first 25 responses I checked. |
+| Badges          | `...profileBadgeInfoChannelWide.badges[]` (`badgeDesc`, `badgeSubtitle`, `badgeIconUrl`)                                       | only some commenters                                                                                                |
+| Recent comments | `profileInfo.profileInfoViewModel.comments[].commentInteractionViewModel` (`videoTitle`, `commentContent`)                     | label in `commentsInteractionTitle`                                                                                 |
+| Subscriptions   | `profileInfo.profileInfoViewModel.sharedSubscriptions[].sharedSubscriptionViewModel` (`channelName`, `avatar...sources[].url`) | label in `sharedSubscriptionsTitle`                                                                                 |
+| Pronouns        | `profileIdentityInfo.profileIdentityInfoViewModel.channelPronouns`                                                             | e.g. `he/him`. Optional: only present when the commenter has set pronouns.                                          |
+
+The whole card also appears a second time under `popupCommand.commandExecutorCommand...`; read only the `profileCard` branch.
 
 ---
 
@@ -88,9 +144,9 @@ What blocks external access:
 This is a browser extension designed to make [Profile Cards](https://support.google.com/youtube/answer/9409333) useful by extracting data from it and displaying that data below YouTube comments' handles as info boxes.
 
 ## What does this add-on do?
-It works by programmatically clicking on the commenter's profile picture to trigger YouTube's Profile Card pop-up. The add-on then extracts specific data points from this pop-up, closes it automatically, and displays the extracted information as info boxes beneath the commenter's handle. It is partially forked from [YouTube™ Commenter Info](https://addons.mozilla.org/addon/yt-cmt-info), another related add-on.
+It reads the profile card tokens YouTube already sends with the comments, requests each commenter's Profile Card from Innertube, and displays the result as info boxes beneath the commenter's handle.
 
-The extracted information is six data types:
+The displayed information is six data types:
 - `total comments` the commenter has posted in all videos of a content creator's YouTube channel
 - number of `hearts received` from said content creator
 - `pronouns` next to handle
@@ -99,17 +155,26 @@ The extracted information is six data types:
 - `subscriptions`
 
 ## What is the technical implementation of this add-on?
-It uses a sophisticated queuing system to sequentially manage profile data extraction, preventing multiple simultaneous pop-up interactions that could interfere with each other. Comments are processed one at a time with delays between operations to make sure information is properly extracted. Handle verification is included to ensure the extracted profile information matches the intended commenter, preventing misattribution in cases where pop-up timing issues might occur.
+Two scripts, one in each JavaScript world:
+- **`page-bridge.js`** runs in YouTube's own page context (`"world": "MAIN"`, `run_at: document_start`). It wraps `window.fetch` to read `/youtubei/v1/next` responses and collect the `profileOwnerExternalChannelId` / `profileCardContext` pairs. On request it calls `get_profile_card` with a fresh `SAPISIDHASH`, so the real cookies, origin and visitor data are used.
+- **`content.js`** runs in the extension's isolated world. It asks the bridge for cards through `window.postMessage`, one request at a time with a 2.5 to 4 second delay, turns each response into the info boxes, and places them under the matching comment. A comment is matched by the `/@handle` or `/channel/UC...` link of its author name, not by its displayed text. Mutation observers and a periodic sweep cover comments that load while scrolling, sorting, or opening replies.
 
-It also employs mutation observers to detect both existing comments on page load and new comments that appear during scrolling or dynamic loading (sort to Newest, clicking on Replies). This ensures comprehensive coverage regardless of how user navigate the comment section.
+No extra permissions are needed: all requests are same-origin from the page. Nothing is sent anywhere else, and the add-on stores no data.
+
+If three requests in a row fail, the add-on stops requesting for that page load (`MAX_FAILURES`), and it never makes more than `MAX_REQUESTS` requests per page load. Both are constants at the top of `content.js`, as is `DEBUG` (set it to `true` to log what the add-on is doing to the console).
 
 ## What are the known limitations of this add-on?
-It faces several inherent constraints due to its operational approach:
-- **Since it depends on YouTube's Profile Card interface, any changes to YouTube's DOM structure or CSS classes could break the data extraction functionality.**
-- The more comments a YouTube video/short/community post has, the more it has to process, and it might miss one or two comments.
-- Since YouTube comment section loads dynamically, user will have to scroll down for more comments to load for the add-on to process more comments. Because of this, it might not include the badge and subscription's channel icon for some commenters' info boxes.
-- Its operations could interfere with user's interaction, such as while searching in the search box. If user clicks while Profile Card is visible, information might not properly be extracted.
-- [Bring back YouTube Comment Usernames](https://addons.mozilla.org/firefox/addon/youtube-找回留言區用戶名稱) will render this add-on useless because of the handle verification step.
+- Innertube can change at any time, though in practice it rarely happens, if not ever. It's a nothing burger really.
+- Cards are fetched in the order comments load, not only for comments you are looking at. The more comments YouTube loads, the more requests are made (slowly, one at a time).
+- **Does not work when you're logged out!**
+- Content scripts are only injected on page load. If you reach a video by clicking from the YouTube home page, you may need to reload it once. (Widening `matches` in `manifest.json` to `https://www.youtube.com/*` avoids that.) **THIS FEATURE IS INTENTIONAL BECAUSE THIS ADD-ON'S NAME IS WIP**
+
+## Reproducing the research
+1. Start a normal Chrome with `--remote-debugging-port=9222 --user-data-dir=<new folder>` and sign in to YouTube manually. (Google blocks sign-in in browsers launched by Playwright.)
+2. Attach with `chromium.connectOverCDP("http://localhost:9222")`.
+3. Listen for requests to `/youtubei/v1/account/get_profile_card` and save `req.postDataBuffer()`. Use the buffer, not `postData()`.
+4. Click a commenter's avatar. The body is JSON.
+5. Search the `/youtubei/v1/next` comment responses for the `profileCardContext` value to find where the tokens come from.
 
 ## What is this add-on's purpose?
 If you think about it, on most social media platforms, you click on other people's profile pictures. Duh! It's literally the "social" in "social media". Even though YouTube is technically one, it's primarily a video-sharing platform. Since when's the last time you click on a commenter's profile picture? That's why I created this add-on.
