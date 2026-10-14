@@ -3,6 +3,8 @@
 > **Update Sep 1st, 2025:** I've been made aware of YouTube's internal API, Innertube, that can reliably fetch Profile Card data and has no quota! The problem is that it's undocumented (internal API duh) so I have no idea how to use it. If anyone can reverse engineer this API, please make an issue!
 > 
 > **Update Feb 23rd, 2026:** Apparently, YouTube Data API doesn't have a Profile Card endpoint... What a bummer. I've been struggling with Innertube 🫩.
+>
+> **Update Oct 14th, 2026:** TYSM CLAUDE I FINALLY GOT RID OF CLICKING UPDATE ASAP
 
 > `POST: https://www.youtube.com/youtubei/v1/account/get_profile_card`
 >
