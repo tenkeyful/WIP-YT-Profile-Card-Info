@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "[WIP] YouTube Profile Card Info",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "description": "Comment Count • Hearts Received • Badges • Recent Comments • Subscription",
   "author": "Nhân Trí",
   "homepage_url": "https://github.com/tenkeyful/WIP-YT-Profile-Card-Info",
@@ -12,6 +12,18 @@
     "128": "icon.svg"
   },
   "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/watch*",
+        "https://www.youtube.com/shorts/*",
+        "https://www.youtube.com/post/*"
+      ],
+      "js": [
+        "youtubei.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
     {
       "matches": [
         "https://www.youtube.com/watch*",
