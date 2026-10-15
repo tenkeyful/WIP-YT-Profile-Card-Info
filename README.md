@@ -88,7 +88,7 @@ Everything below was found by capturing the request YouTube's own page sends (Pl
 - `profileCardContext` is an opaque token that YouTube generates **server-side** and sends along with the comment. It is not built by YouTube's JS.
 
 > [!NOTE]
-> A real captured request has exactly these three top-level keys. The add-on builds `context` from `ytcfg.get("INNERTUBE_CONTEXT")`, which should match what YouTube's page sends, but I have not compared the two key by key. If requests fail with `400`, compare `context` against a capture of your own.
+> A real captured request has exactly these three top-level keys. The add-on builds `context` from `ytcfg.get("INNERTUBE_CONTEXT")`, which should match what YouTube's page sends.
 
 ### Headers
 
@@ -102,8 +102,6 @@ Sent from inside the page (same origin), so cookies and `Origin` are the real on
 | `X-Goog-Visitor-Id`                                  | `ytcfg.get("VISITOR_DATA")`                                                                                                                                                          |
 | `X-Youtube-Bootstrap-Logged-In`                      | `true`                                                                                                                                                                               |
 | `X-Youtube-Client-Name` / `X-Youtube-Client-Version` | `1` / `ytcfg.get("INNERTUBE_CLIENT_VERSION")`                                                                                                                                        |
-
-The earlier `400 invalid argument` errors came from guessing a protobuf body that does not exist.
 
 ### Where the two per-commenter values come from
 
