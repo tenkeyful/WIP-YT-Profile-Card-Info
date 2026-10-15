@@ -68,7 +68,7 @@ Everything below was found by capturing the request YouTube's own page sends (Pl
 
 ### Request body is JSON
 
-```json
+```
 {
     "context": {
         "client": {
